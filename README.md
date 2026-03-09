@@ -1,4 +1,5 @@
 ![CI](https://github.com/AnonJon/kdocter/actions/workflows/ci.yml/badge.svg)
+![Release](https://img.shields.io/github/v/release/AnonJon/kdocter)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Rust](https://img.shields.io/badge/rust-stable-orange)
 ![Kubernetes](https://img.shields.io/badge/kubernetes-compatible-blue)
@@ -220,10 +221,14 @@ kdocter diagnose cluster --output sarif -A > kdocter.sarif.json
 Release binaries are published on tagged releases (`v*`) through:
 
 - [`.github/workflows/release.yml`](./.github/workflows/release.yml)
+- [Latest release](https://github.com/AnonJon/kdocter/releases/latest)
+
+Available now:
+
+- GitHub Releases assets (Linux/macOS/Windows archives)
 
 Planned install paths:
 
-- GitHub Releases assets (Linux/macOS/Windows archives)
 - Homebrew tap formula (planned)
 - Scoop manifest (planned)
 
@@ -287,6 +292,8 @@ That gives a direct root-cause path instead of disconnected clues.
 ## Project Status
 
 `kdocter` is early-stage but functional for real diagnostics.
+
+First public release: `v0.1.0` (March 8, 2026).
 
 Current capabilities:
 

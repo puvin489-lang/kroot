@@ -7,8 +7,42 @@ CRITICAL Pod/prod/payments-api -> Missing Secret dependency detected
   Root cause: Pod failing because secret db-password does not exist
 WARNING Service/prod/payments -> Service selector mismatch detected
   Root cause: Service selector does not match any pod labels
-WARNING Pod/prod/payments-api -> NetworkPolicy blocking traffic
-  Root cause: NetworkPolicy rules deny expected ingress/egress for selected pods
+WARNING Pod/prod/payments-api -> Network reachability blocked by NetworkPolicy
+  Root cause: Ingress/egress rules do not permit required peer and port communication
 
 Dependency Traces:
-  Pod/prod/payments-api -> Secret/prod/db-password -> Secret missing (source: pod.dependencies)
+  [0.90] Pod/prod/payments-api -> NetworkPolicy/prod/deny-all -> NetworkPolicy denies traffic (source: networkpolicy.egress) (egress has no matching peers/ports in context policies=[NetworkPolicy/prod/deny-all])
+
+Blast Radius:
+  [#1 score=14.70 conf=0.98] NetworkPolicy/prod/deny-all
+    pods=1 services=0 deployments=1 ingresses=0
+    impacted pods: Pod/prod/payments-api
+    impacted deployments: Deployment/prod/payments-api
+  [#2 score=11.76 conf=0.98] Pod/prod/payments-api
+    pods=0 services=0 deployments=1 ingresses=0
+    impacted deployments: Deployment/prod/payments-api
+  [#3 score=6.30 conf=0.90] Service/prod/payments
+    pods=0 services=0 deployments=0 ingresses=1
+    impacted ingresses: Ingress/prod/payments-ingress
+  [#4 score=2.94 conf=0.98] Secret/db-password
+    pods=0 services=0 deployments=0 ingresses=0
+
+Suggested Fixes:
+  Missing Secret dependency detected (Pod/prod/payments-api)
+    Summary: Create the missing Secret or update pod references
+    Steps:
+      1. Create the referenced secret in the same namespace as the failing pod
+      2. Ensure expected key names match the pod env/volume references
+      3. Restart workload rollout after the secret is created or corrected
+  Service selector mismatch detected (Service/prod/payments)
+    Summary: Align Service selectors with workload pod labels
+    Steps:
+      1. Compare service selector keys/values against pod labels
+      2. Update the service selector or workload labels to match
+      3. Confirm endpoints are populated after reconciliation
+  Network reachability blocked by NetworkPolicy (Pod/prod/payments-api)
+    Summary: Allow required peer and port combinations in NetworkPolicy
+    Steps:
+      1. Identify blocked service or pod traffic paths from the evidence chain
+      2. Add explicit ingress/egress peers and required ports for expected flows
+      3. Re-test connectivity after applying policy updates

@@ -1,7 +1,7 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use graph::{Relation, ResourceKind};
 use std::collections::{BTreeMap, BTreeSet};
-use types::{AnalysisContext, Diagnosis, Severity};
+use types::{AnalysisContext, Diagnosis, Remediation, Severity};
 
 pub struct NetworkPolicyBlockingAnalyzer;
 
@@ -135,5 +135,17 @@ fn analyze_network_policy(
         root_cause: "NetworkPolicy rules deny expected ingress/egress for selected pods"
             .to_string(),
         evidence,
+        remediation: Some(Remediation {
+            summary: "Permit required traffic in NetworkPolicy ingress/egress rules".to_string(),
+            steps: vec![
+                "Identify blocked source/destination pod selectors and required ports".to_string(),
+                "Add explicit allow peers/ports for expected service communication".to_string(),
+                "Re-test traffic path after applying policy changes".to_string(),
+            ],
+            commands: vec![
+                "kubectl get networkpolicy -n <namespace>".to_string(),
+                "kubectl describe networkpolicy <policy> -n <namespace>".to_string(),
+            ],
+        }),
     })
 }

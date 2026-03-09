@@ -1,7 +1,7 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use graph::Relation;
 use std::collections::{BTreeMap, BTreeSet};
-use types::{AnalysisContext, DependencyStatus, Diagnosis, Severity};
+use types::{AnalysisContext, DependencyStatus, Diagnosis, Remediation, Severity};
 
 pub struct FailedMountPvcAnalyzer;
 
@@ -125,5 +125,20 @@ fn analyze_storage(
         message: "Persistent volume mount failure detected".to_string(),
         root_cause: "Pod cannot mount storage because PVC/PV is missing or unbound".to_string(),
         evidence,
+        remediation: Some(Remediation {
+            summary: "Resolve PVC/PV/StorageClass binding before scheduling workload".to_string(),
+            steps: vec![
+                "Verify the referenced PersistentVolumeClaim exists and reaches Bound phase"
+                    .to_string(),
+                "Check that the configured StorageClass exists and can provision volumes"
+                    .to_string(),
+                "Ensure PVC access modes and size are compatible with the backing PV".to_string(),
+            ],
+            commands: vec![
+                "kubectl get pvc -n <namespace>".to_string(),
+                "kubectl describe pvc <pvc-name> -n <namespace>".to_string(),
+                "kubectl get storageclass".to_string(),
+            ],
+        }),
     })
 }

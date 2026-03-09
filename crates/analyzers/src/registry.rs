@@ -1,7 +1,7 @@
 use crate::analyzers::{
     CrashLoopBackOffAnalyzer, FailedLivenessProbeAnalyzer, FailedMountPvcAnalyzer,
     FailedReadinessProbeAnalyzer, ImagePullBackOffAnalyzer, MissingConfigMapAnalyzer,
-    MissingSecretAnalyzer, NetworkPolicyBlockingAnalyzer, NodeNotReadyAnalyzer, OOMKilledAnalyzer,
+    MissingSecretAnalyzer, NetworkReachabilityAnalyzer, NodeNotReadyAnalyzer, OOMKilledAnalyzer,
     ServiceSelectorMismatchAnalyzer, UnschedulableAnalyzer,
 };
 use crate::{Analyzer, GraphAnalyzer};
@@ -20,7 +20,7 @@ pub fn default_graph_analyzers() -> Vec<Box<dyn GraphAnalyzer>> {
         Box::new(FailedReadinessProbeAnalyzer),
         Box::new(FailedLivenessProbeAnalyzer),
         Box::new(FailedMountPvcAnalyzer),
-        Box::new(NetworkPolicyBlockingAnalyzer),
+        Box::new(NetworkReachabilityAnalyzer),
         Box::new(MissingSecretAnalyzer),
         Box::new(MissingConfigMapAnalyzer),
         Box::new(ServiceSelectorMismatchAnalyzer),

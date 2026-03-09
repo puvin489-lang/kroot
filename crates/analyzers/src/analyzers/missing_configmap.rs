@@ -1,7 +1,7 @@
 use crate::{AnalysisInput, GraphAnalyzer};
 use graph::{Relation, ResourceKind};
 use std::collections::BTreeSet;
-use types::{DependencyStatus, Diagnosis, Severity};
+use types::{DependencyStatus, Diagnosis, Remediation, Severity};
 
 pub struct MissingConfigMapAnalyzer;
 
@@ -72,6 +72,20 @@ impl GraphAnalyzer for MissingConfigMapAnalyzer {
             message: "Missing ConfigMap dependency detected".to_string(),
             root_cause,
             evidence,
+            remediation: Some(Remediation {
+                summary: "Create the missing ConfigMap or update workload references".to_string(),
+                steps: vec![
+                    "Create the referenced configmap in the same namespace as the failing pod"
+                        .to_string(),
+                    "Validate config key names match envFrom/env/volume references".to_string(),
+                    "Restart rollout to ensure pods consume the corrected config".to_string(),
+                ],
+                commands: vec![
+                    "kubectl create configmap <name> -n <namespace> --from-literal=<key>=<value>"
+                        .to_string(),
+                    "kubectl rollout restart deployment/<deployment> -n <namespace>".to_string(),
+                ],
+            }),
         })
     }
 }

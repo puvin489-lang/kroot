@@ -8,7 +8,8 @@ use k8s_openapi::api::core::v1::{
 use kube::{Api, Client, api::ListParams};
 use types::{
     AnalysisContextBuilder, ContainerLifecycleState, ContainerState, DependencyStatus,
-    PodDependency, PodDependencyKind, PodSchedulingState, PodState, ServiceSelectorState,
+    PodDependency, PodDependencyKind, PodPortState, PodSchedulingState, PodState,
+    ServiceSelectorState,
 };
 
 use crate::collector::CollectScope;
@@ -184,6 +185,26 @@ pub async fn normalize_pod_state(client: &Client, pod: Pod) -> PodState {
     }
 
     let service_selectors = list_service_selector_states(client, &namespace, &pod_labels).await;
+    let ports = spec
+        .map(|s| {
+            s.containers
+                .iter()
+                .flat_map(|container| {
+                    container
+                        .ports
+                        .as_ref()
+                        .into_iter()
+                        .flatten()
+                        .map(|port| PodPortState {
+                            name: port.name.clone(),
+                            protocol: port.protocol.clone().unwrap_or_else(|| "TCP".to_string()),
+                            container_port: port.container_port,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
 
     PodState {
         name,
@@ -199,6 +220,7 @@ pub async fn normalize_pod_state(client: &Client, pod: Pod) -> PodState {
         container_states,
         dependencies,
         persistent_volume_claims: persistent_volume_claims.into_iter().collect(),
+        ports,
     }
 }
 

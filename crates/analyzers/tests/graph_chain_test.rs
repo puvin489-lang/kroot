@@ -48,6 +48,7 @@ fn service_selector_mismatch_reports_no_route() {
         namespace: "prod".to_string(),
         selector,
         matched_pods: vec![],
+        ports: vec![],
     };
     let ctx = AnalysisContextBuilder::new()
         .with_pods(vec![pod])

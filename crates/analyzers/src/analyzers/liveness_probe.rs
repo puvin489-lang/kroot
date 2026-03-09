@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, Diagnosis, Severity};
+use types::{AnalysisContext, Diagnosis, Remediation, Severity};
 
 pub struct FailedLivenessProbeAnalyzer;
 
@@ -43,6 +43,18 @@ impl Analyzer for FailedLivenessProbeAnalyzer {
             message: "Liveness probe failures detected".to_string(),
             root_cause: "Container is being restarted by failing liveness checks".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Tune liveness probes so healthy-but-slow containers are not killed"
+                    .to_string(),
+                steps: vec![
+                    "Verify liveness endpoint/command is correct and stable".to_string(),
+                    "Increase failureThreshold/timeoutSeconds/initialDelaySeconds as needed"
+                        .to_string(),
+                    "Fix application deadlock or crash behavior if probe failures are legitimate"
+                        .to_string(),
+                ],
+                commands: vec!["kubectl describe pod <pod> -n <namespace>".to_string()],
+            }),
         })
     }
 }

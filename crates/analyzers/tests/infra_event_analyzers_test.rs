@@ -80,6 +80,7 @@ fn detects_failed_mount_pvc() {
         exists: true,
         phase: "Pending".to_string(),
         volume_name: Some("pv-data".to_string()),
+        storage_class_name: Some("gp3".to_string()),
     };
     let pv = PersistentVolumeState {
         name: "pv-data".to_string(),
@@ -105,6 +106,7 @@ fn detects_network_policy_blocking() {
         name: "deny-all".to_string(),
         namespace: "prod".to_string(),
         pod_selector: selector,
+        pod_selector_expressions: vec![],
         policy_types: vec!["Ingress".to_string(), "Egress".to_string()],
         ingress_rule_count: 0,
         egress_rule_count: 0,
@@ -114,6 +116,8 @@ fn detects_network_policy_blocking() {
         egress_port_count: 0,
         default_deny_ingress: true,
         default_deny_egress: true,
+        ingress_rules: vec![],
+        egress_rules: vec![],
     };
     let analyzer = NetworkPolicyBlockingAnalyzer;
     let ctx = AnalysisContextBuilder::new()

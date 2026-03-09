@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, Diagnosis, Severity};
+use types::{AnalysisContext, Diagnosis, Remediation, Severity};
 
 pub struct NodeNotReadyAnalyzer;
 
@@ -45,6 +45,18 @@ impl Analyzer for NodeNotReadyAnalyzer {
             message: "Node NotReady detected".to_string(),
             root_cause: "Node is unhealthy or disconnected from control plane".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Restore node health and kubelet connectivity".to_string(),
+                steps: vec![
+                    "Inspect node conditions and kubelet status for failure reasons".to_string(),
+                    "Resolve host-level issues (network, disk pressure, runtime)".to_string(),
+                    "Cordon/drain and replace node if it cannot recover quickly".to_string(),
+                ],
+                commands: vec![
+                    "kubectl describe node <node>".to_string(),
+                    "kubectl get nodes".to_string(),
+                ],
+            }),
         })
     }
 }

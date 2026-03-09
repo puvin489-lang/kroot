@@ -3,8 +3,11 @@ use std::future::Future;
 use std::pin::Pin;
 
 use k8s_openapi::api::core::v1::{PersistentVolume, PersistentVolumeClaim, Pod};
+use k8s_openapi::api::storage::v1::StorageClass;
 use kube::{Api, Client, api::ListParams};
-use types::{AnalysisContextBuilder, PersistentVolumeClaimState, PersistentVolumeState};
+use types::{
+    AnalysisContextBuilder, PersistentVolumeClaimState, PersistentVolumeState, StorageClassState,
+};
 
 use crate::collector::{ClusterResult, CollectInput, CollectScope, Collector};
 use crate::pods::fetch_target_pod;
@@ -33,10 +36,13 @@ impl Collector for StorageCollector {
                     .await;
             let persistent_volumes =
                 collect_persistent_volume_states(client, &persistent_volume_claims).await;
+            let storage_classes =
+                collect_storage_class_states(client, &persistent_volume_claims).await;
 
             Ok(builder
                 .with_persistent_volume_claims(persistent_volume_claims)
-                .with_persistent_volumes(persistent_volumes))
+                .with_persistent_volumes(persistent_volumes)
+                .with_storage_classes(storage_classes))
         })
     }
 }
@@ -87,12 +93,17 @@ async fn collect_persistent_volume_claim_states(
                     .and_then(|status| status.phase.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
                 let volume_name = pvc.spec.as_ref().and_then(|spec| spec.volume_name.clone());
+                let storage_class_name = pvc
+                    .spec
+                    .as_ref()
+                    .and_then(|spec| spec.storage_class_name.clone());
                 states.push(PersistentVolumeClaimState {
                     name: claim_name.clone(),
                     namespace: namespace.to_string(),
                     exists: true,
                     phase,
                     volume_name,
+                    storage_class_name,
                 });
             }
             Ok(None) => states.push(PersistentVolumeClaimState {
@@ -101,6 +112,7 @@ async fn collect_persistent_volume_claim_states(
                 exists: false,
                 phase: "Missing".to_string(),
                 volume_name: None,
+                storage_class_name: None,
             }),
             Err(_) => states.push(PersistentVolumeClaimState {
                 name: claim_name.clone(),
@@ -108,6 +120,40 @@ async fn collect_persistent_volume_claim_states(
                 exists: false,
                 phase: "Unknown".to_string(),
                 volume_name: None,
+                storage_class_name: None,
+            }),
+        }
+    }
+
+    states
+}
+
+async fn collect_storage_class_states(
+    client: &Client,
+    persistent_volume_claims: &[PersistentVolumeClaimState],
+) -> Vec<StorageClassState> {
+    let storage_classes: Api<StorageClass> = Api::all(client.clone());
+    let mut class_names = BTreeSet::new();
+    for pvc in persistent_volume_claims {
+        if let Some(class_name) = pvc.storage_class_name.clone() {
+            class_names.insert(class_name);
+        }
+    }
+
+    let mut states = Vec::new();
+    for class_name in class_names {
+        match storage_classes.get_opt(&class_name).await {
+            Ok(Some(_)) => states.push(StorageClassState {
+                name: class_name,
+                exists: true,
+            }),
+            Ok(None) => states.push(StorageClassState {
+                name: class_name,
+                exists: false,
+            }),
+            Err(_) => states.push(StorageClassState {
+                name: class_name,
+                exists: false,
             }),
         }
     }

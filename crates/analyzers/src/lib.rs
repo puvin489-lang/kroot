@@ -20,7 +20,8 @@ pub trait GraphAnalyzer {
 pub use analyzers::{
     CrashLoopBackOffAnalyzer, FailedLivenessProbeAnalyzer, FailedMountPvcAnalyzer,
     FailedReadinessProbeAnalyzer, ImagePullBackOffAnalyzer, MissingConfigMapAnalyzer,
-    MissingSecretAnalyzer, NetworkPolicyBlockingAnalyzer, NodeNotReadyAnalyzer, OOMKilledAnalyzer,
-    ServiceSelectorMismatchAnalyzer, UnschedulableAnalyzer,
+    MissingSecretAnalyzer, NetworkPolicyBlockingAnalyzer, NetworkReachabilityAnalyzer,
+    NodeNotReadyAnalyzer, OOMKilledAnalyzer, ServiceSelectorMismatchAnalyzer,
+    UnschedulableAnalyzer,
 };
 pub use registry::{default_analyzers, default_graph_analyzers};

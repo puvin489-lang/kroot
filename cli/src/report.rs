@@ -20,17 +20,41 @@ struct DiagnosisRow {
 
 #[derive(Tabled)]
 struct TraceRow {
+    confidence: String,
     chain: String,
+}
+
+#[derive(Tabled)]
+struct BlastRadiusRow {
+    rank: String,
+    impact_score: String,
+    confidence: String,
+    broken_resource: String,
+    impacted_pods: String,
+    impacted_services: String,
+    impacted_deployments: String,
+    impacted_ingresses: String,
 }
 
 pub fn print_pod_report(
     pod: &types::PodState,
     diagnoses: Vec<Diagnosis>,
     traces: Vec<engine::DependencyTrace>,
+    blast_radius: Vec<engine::BlastRadiusImpact>,
+    show_fixes: bool,
+    show_commands: bool,
 ) {
     let diagnoses = normalize_diagnoses(diagnoses);
-    let trace_chains = normalize_trace_chains(traces);
-    let report = render_pod_report(pod, &diagnoses, &trace_chains);
+    let traces = normalize_dependency_traces(traces);
+    let blast_radius = normalize_blast_radius(blast_radius);
+    let report = render_pod_report(
+        pod,
+        &diagnoses,
+        &traces,
+        &blast_radius,
+        show_fixes,
+        show_commands,
+    );
 
     println!("{}", "Diagnosis Report".bold().blue());
     println!("{}", "----------------".blue());
@@ -38,10 +62,23 @@ pub fn print_pod_report(
     print!("{report}");
 }
 
-pub fn print_cluster_report(diagnoses: Vec<Diagnosis>, traces: Vec<engine::DependencyTrace>) {
+pub fn print_cluster_report(
+    diagnoses: Vec<Diagnosis>,
+    traces: Vec<engine::DependencyTrace>,
+    blast_radius: Vec<engine::BlastRadiusImpact>,
+    show_fixes: bool,
+    show_commands: bool,
+) {
     let diagnoses = normalize_diagnoses(diagnoses);
-    let trace_chains = normalize_trace_chains(traces);
-    let report = render_cluster_report(&diagnoses, &trace_chains);
+    let traces = normalize_dependency_traces(traces);
+    let blast_radius = normalize_blast_radius(blast_radius);
+    let report = render_cluster_report(
+        &diagnoses,
+        &traces,
+        &blast_radius,
+        show_fixes,
+        show_commands,
+    );
 
     println!("{}", "Diagnosis Report".bold().blue());
     println!("{}", "----------------".blue());
@@ -52,7 +89,10 @@ pub fn print_cluster_report(diagnoses: Vec<Diagnosis>, traces: Vec<engine::Depen
 pub fn render_pod_report(
     pod: &types::PodState,
     diagnoses: &[Diagnosis],
-    trace_chains: &[String],
+    traces: &[engine::DependencyTrace],
+    blast_radius: &[engine::BlastRadiusImpact],
+    show_fixes: bool,
+    show_commands: bool,
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("Pod: {}\n", pod.name));
@@ -118,24 +158,68 @@ pub fn render_pod_report(
     out.push_str(&format!("{}\n\n", Table::new(evidence_rows)));
 
     out.push_str("Dependency Traces:\n");
-    let trace_rows = if trace_chains.is_empty() {
+    let trace_rows = if traces.is_empty() {
         vec![TraceRow {
+            confidence: "-".to_string(),
             chain: "No missing dependency chains found".to_string(),
         }]
     } else {
-        trace_chains
+        traces
             .iter()
-            .map(|chain| TraceRow {
-                chain: chain.clone(),
+            .map(|trace| TraceRow {
+                confidence: format!("{:.2}", trace.confidence),
+                chain: trace.chain.join(" -> "),
             })
             .collect::<Vec<_>>()
     };
     out.push_str(&format!("{}\n", Table::new(trace_rows)));
 
+    out.push('\n');
+    out.push_str("Blast Radius:\n");
+    let blast_rows = if blast_radius.is_empty() {
+        vec![BlastRadiusRow {
+            rank: "-".to_string(),
+            impact_score: "-".to_string(),
+            confidence: "-".to_string(),
+            broken_resource: "No impacted upstream dependency detected".to_string(),
+            impacted_pods: "-".to_string(),
+            impacted_services: "-".to_string(),
+            impacted_deployments: "-".to_string(),
+            impacted_ingresses: "-".to_string(),
+        }]
+    } else {
+        blast_radius
+            .iter()
+            .map(|impact| BlastRadiusRow {
+                rank: impact.rank.to_string(),
+                impact_score: format!("{:.2}", impact.impact_score),
+                confidence: format!("{:.2}", impact.confidence),
+                broken_resource: impact.broken_resource.clone(),
+                impacted_pods: join_or_none(&impact.impacted_pods),
+                impacted_services: join_or_none(&impact.impacted_services),
+                impacted_deployments: join_or_none(&impact.impacted_deployments),
+                impacted_ingresses: join_or_none(&impact.impacted_ingresses),
+            })
+            .collect::<Vec<_>>()
+    };
+    out.push_str(&format!("{}\n", Table::new(blast_rows)));
+
+    if show_fixes {
+        out.push('\n');
+        out.push_str("Suggested Fixes:\n");
+        out.push_str(&render_fixes(diagnoses, show_commands, 2));
+    }
+
     out
 }
 
-pub fn render_cluster_report(diagnoses: &[Diagnosis], trace_chains: &[String]) -> String {
+pub fn render_cluster_report(
+    diagnoses: &[Diagnosis],
+    traces: &[engine::DependencyTrace],
+    blast_radius: &[engine::BlastRadiusImpact],
+    show_fixes: bool,
+    show_commands: bool,
+) -> String {
     let mut out = String::new();
     out.push_str(&format!("{} issues detected\n\n", diagnoses.len()));
 
@@ -155,13 +239,68 @@ pub fn render_cluster_report(diagnoses: &[Diagnosis], trace_chains: &[String]) -
 
     out.push('\n');
     out.push_str("Dependency Traces:\n");
-    if trace_chains.is_empty() {
+    if traces.is_empty() {
         out.push_str("  No missing dependency chains found\n");
         return out;
     }
-    for chain in trace_chains {
-        out.push_str(&format!("  {chain}\n"));
+    for trace in traces {
+        out.push_str(&format!(
+            "  [{:.2}] {}\n",
+            trace.confidence,
+            trace.chain.join(" -> ")
+        ));
     }
+
+    out.push('\n');
+    out.push_str("Blast Radius:\n");
+    if blast_radius.is_empty() {
+        out.push_str("  No impacted upstream dependency detected\n");
+        return out;
+    }
+    for impact in blast_radius {
+        out.push_str(&format!(
+            "  [#{} score={:.2} conf={:.2}] {}\n",
+            impact.rank, impact.impact_score, impact.confidence, impact.broken_resource
+        ));
+        out.push_str(&format!(
+            "    pods={} services={} deployments={} ingresses={}\n",
+            impact.impacted_pods.len(),
+            impact.impacted_services.len(),
+            impact.impacted_deployments.len(),
+            impact.impacted_ingresses.len()
+        ));
+        if !impact.impacted_pods.is_empty() {
+            out.push_str(&format!(
+                "    impacted pods: {}\n",
+                impact.impacted_pods.join(", ")
+            ));
+        }
+        if !impact.impacted_services.is_empty() {
+            out.push_str(&format!(
+                "    impacted services: {}\n",
+                impact.impacted_services.join(", ")
+            ));
+        }
+        if !impact.impacted_deployments.is_empty() {
+            out.push_str(&format!(
+                "    impacted deployments: {}\n",
+                impact.impacted_deployments.join(", ")
+            ));
+        }
+        if !impact.impacted_ingresses.is_empty() {
+            out.push_str(&format!(
+                "    impacted ingresses: {}\n",
+                impact.impacted_ingresses.join(", ")
+            ));
+        }
+    }
+
+    if show_fixes {
+        out.push('\n');
+        out.push_str("Suggested Fixes:\n");
+        out.push_str(&render_fixes(diagnoses, show_commands, 2));
+    }
+
     out
 }
 
@@ -184,7 +323,12 @@ fn severity_rank(severity: types::Severity) -> u8 {
 pub fn normalize_diagnoses(diagnoses: Vec<Diagnosis>) -> Vec<Diagnosis> {
     let mut merged: BTreeMap<
         (u8, String, String, String),
-        (types::Severity, f32, BTreeSet<String>),
+        (
+            types::Severity,
+            f32,
+            BTreeSet<String>,
+            Option<types::Remediation>,
+        ),
     > = BTreeMap::new();
 
     for diagnosis in diagnoses {
@@ -198,9 +342,13 @@ pub fn normalize_diagnoses(diagnoses: Vec<Diagnosis>) -> Vec<Diagnosis> {
             diagnosis.severity,
             diagnosis.confidence,
             BTreeSet::new(),
+            diagnosis.remediation.clone(),
         ));
         if diagnosis.confidence > entry.1 {
             entry.1 = diagnosis.confidence;
+        }
+        if entry.3.is_none() {
+            entry.3 = diagnosis.remediation.clone();
         }
         for evidence in diagnosis.evidence {
             entry.2.insert(evidence);
@@ -210,7 +358,10 @@ pub fn normalize_diagnoses(diagnoses: Vec<Diagnosis>) -> Vec<Diagnosis> {
     let mut normalized = merged
         .into_iter()
         .map(
-            |((_rank, resource, message, root_cause), (severity, confidence, evidence_set))| {
+            |(
+                (_rank, resource, message, root_cause),
+                (severity, confidence, evidence_set, remediation),
+            )| {
                 Diagnosis {
                     severity,
                     confidence,
@@ -218,6 +369,7 @@ pub fn normalize_diagnoses(diagnoses: Vec<Diagnosis>) -> Vec<Diagnosis> {
                     message,
                     root_cause,
                     evidence: evidence_set.into_iter().collect(),
+                    remediation,
                 }
             },
         )
@@ -234,13 +386,129 @@ pub fn normalize_diagnoses(diagnoses: Vec<Diagnosis>) -> Vec<Diagnosis> {
     normalized
 }
 
-fn normalize_trace_chains(traces: Vec<engine::DependencyTrace>) -> Vec<String> {
-    traces
-        .into_iter()
-        .map(|trace| trace.chain.join(" -> "))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
+fn normalize_dependency_traces(
+    traces: Vec<engine::DependencyTrace>,
+) -> Vec<engine::DependencyTrace> {
+    let mut merged = BTreeMap::<String, engine::DependencyTrace>::new();
+    for trace in traces {
+        let key = trace.chain.join(" -> ");
+        match merged.get_mut(&key) {
+            Some(existing) => {
+                if trace.confidence > existing.confidence {
+                    existing.confidence = trace.confidence;
+                }
+            }
+            None => {
+                merged.insert(key, trace);
+            }
+        }
+    }
+
+    let mut normalized = merged.into_values().collect::<Vec<_>>();
+    normalized.sort_by(|a, b| {
+        b.confidence
+            .total_cmp(&a.confidence)
+            .then_with(|| a.chain.join(" -> ").cmp(&b.chain.join(" -> ")))
+    });
+    normalized
+}
+
+fn normalize_blast_radius(
+    impacts: Vec<engine::BlastRadiusImpact>,
+) -> Vec<engine::BlastRadiusImpact> {
+    let mut merged = BTreeMap::<String, engine::BlastRadiusImpact>::new();
+    for impact in impacts {
+        let key = impact.broken_resource.clone();
+        match merged.get_mut(&key) {
+            Some(existing) => {
+                if impact.confidence > existing.confidence {
+                    existing.confidence = impact.confidence;
+                }
+                if impact.impact_score > existing.impact_score {
+                    existing.impact_score = impact.impact_score;
+                }
+                if impact.rank < existing.rank {
+                    existing.rank = impact.rank;
+                }
+                existing
+                    .impacted_pods
+                    .extend(impact.impacted_pods.into_iter());
+                existing
+                    .impacted_services
+                    .extend(impact.impacted_services.into_iter());
+                existing
+                    .impacted_deployments
+                    .extend(impact.impacted_deployments.into_iter());
+                existing.impacted_pods.sort();
+                existing.impacted_pods.dedup();
+                existing.impacted_services.sort();
+                existing.impacted_services.dedup();
+                existing.impacted_deployments.sort();
+                existing.impacted_deployments.dedup();
+            }
+            None => {
+                merged.insert(key, impact);
+            }
+        }
+    }
+
+    let mut normalized = merged.into_values().collect::<Vec<_>>();
+    normalized.sort_by(|a, b| {
+        b.impact_score
+            .total_cmp(&a.impact_score)
+            .then_with(|| b.confidence.total_cmp(&a.confidence))
+            .then_with(|| a.broken_resource.cmp(&b.broken_resource))
+    });
+    for (idx, impact) in normalized.iter_mut().enumerate() {
+        impact.rank = idx + 1;
+    }
+    normalized
+}
+
+fn join_or_none(items: &[String]) -> String {
+    if items.is_empty() {
+        "-".to_string()
+    } else {
+        items.join(", ")
+    }
+}
+
+fn render_fixes(diagnoses: &[Diagnosis], show_commands: bool, indent: usize) -> String {
+    let prefix = " ".repeat(indent);
+    let mut out = String::new();
+    let mut has_any = false;
+
+    for diagnosis in diagnoses {
+        let Some(remediation) = &diagnosis.remediation else {
+            continue;
+        };
+        has_any = true;
+        out.push_str(&format!(
+            "{prefix}{} ({})\n",
+            diagnosis.message, diagnosis.resource
+        ));
+        out.push_str(&format!("{prefix}  Summary: {}\n", remediation.summary));
+
+        if !remediation.steps.is_empty() {
+            out.push_str(&format!("{prefix}  Steps:\n"));
+            for (idx, step) in remediation.steps.iter().enumerate() {
+                out.push_str(&format!("{prefix}    {}. {}\n", idx + 1, step));
+            }
+        }
+
+        if show_commands && !remediation.commands.is_empty() {
+            out.push_str(&format!("{prefix}  Commands:\n"));
+            for cmd in &remediation.commands {
+                out.push_str(&format!("{prefix}    - {cmd}\n"));
+            }
+        }
+    }
+
+    if !has_any {
+        out.push_str(&format!("{prefix}No remediation suggestions available\n"));
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -288,6 +556,7 @@ mod tests {
                 status: DependencyStatus::Missing,
             }],
             persistent_volume_claims: vec![],
+            ports: vec![],
         }
     }
 
@@ -301,6 +570,7 @@ mod tests {
                 message: "X".to_string(),
                 root_cause: "A".to_string(),
                 evidence: vec!["e2".to_string(), "e1".to_string()],
+                remediation: None,
             },
             Diagnosis {
                 severity: Severity::Critical,
@@ -309,6 +579,7 @@ mod tests {
                 message: "Y".to_string(),
                 root_cause: "B".to_string(),
                 evidence: vec!["z".to_string()],
+                remediation: None,
             },
             Diagnosis {
                 severity: Severity::Warning,
@@ -317,6 +588,7 @@ mod tests {
                 message: "X".to_string(),
                 root_cause: "A".to_string(),
                 evidence: vec!["e1".to_string(), "e3".to_string()],
+                remediation: None,
             },
         ];
 
@@ -341,11 +613,32 @@ mod tests {
             evidence: vec![
                 "Pod/prod/payments-api -> Secret/db-password -> Secret missing".to_string(),
             ],
+            remediation: Some(types::Remediation {
+                summary: "Create missing secret".to_string(),
+                steps: vec![],
+                commands: vec![],
+            }),
         }];
-        let traces =
-            vec!["Pod/prod/payments-api -> Secret/db-password -> Secret missing".to_string()];
+        let traces = vec![engine::DependencyTrace {
+            chain: vec![
+                "Pod/prod/payments-api".to_string(),
+                "Secret/prod/db-password".to_string(),
+                "Secret missing".to_string(),
+            ],
+            confidence: 0.96,
+        }];
 
-        let report = render_pod_report(&pod, &diagnoses, &traces);
+        let blast_radius = vec![engine::BlastRadiusImpact {
+            broken_resource: "Secret/prod/db-password".to_string(),
+            rank: 1,
+            impact_score: 15.36,
+            confidence: 0.96,
+            impacted_pods: vec!["Pod/prod/payments-api".to_string()],
+            impacted_services: vec![],
+            impacted_deployments: vec!["Deployment/prod/payments-api".to_string()],
+            impacted_ingresses: vec![],
+        }];
+        let report = render_pod_report(&pod, &diagnoses, &traces, &blast_radius, true, false);
         let expected = include_str!("../tests/fixtures/diagnosis_report.golden.txt");
         assert_eq!(report, expected);
     }

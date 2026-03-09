@@ -9,7 +9,19 @@
       "root_cause": "Pod failing because secret db-password does not exist",
       "evidence": [
         "Pod/prod/payments-api -> Secret/db-password -> Secret missing source=pod.dependencies"
-      ]
+      ],
+      "remediation": {
+        "summary": "Create the missing Secret or update pod references",
+        "steps": [
+          "Create the referenced secret in the same namespace as the failing pod",
+          "Ensure expected key names match the pod env/volume references",
+          "Restart workload rollout after the secret is created or corrected"
+        ],
+        "commands": [
+          "kubectl create secret generic <secret-name> -n <namespace> --from-literal=<key>=<value>",
+          "kubectl rollout restart deployment/<deployment> -n <namespace>"
+        ]
+      }
     },
     {
       "severity": "Warning",
@@ -19,26 +31,102 @@
       "root_cause": "Service selector does not match any pod labels",
       "evidence": [
         "service=prod/payments selector=[app=payments] has no matched pods"
-      ]
+      ],
+      "remediation": {
+        "summary": "Align Service selectors with workload pod labels",
+        "steps": [
+          "Compare service selector keys/values against pod labels",
+          "Update the service selector or workload labels to match",
+          "Confirm endpoints are populated after reconciliation"
+        ],
+        "commands": [
+          "kubectl get svc <service> -n <namespace> -o yaml",
+          "kubectl get pods -n <namespace> --show-labels",
+          "kubectl get endpoints <service> -n <namespace>"
+        ]
+      }
     },
     {
       "severity": "Warning",
-      "confidence": 0.8,
+      "confidence": 0.84,
       "resource": "Pod/prod/payments-api",
-      "message": "NetworkPolicy blocking traffic",
-      "root_cause": "NetworkPolicy rules deny expected ingress/egress for selected pods",
+      "message": "Network reachability blocked by NetworkPolicy",
+      "root_cause": "Ingress/egress rules do not permit required peer and port communication",
       "evidence": [
-        "NetworkPolicy/prod/deny-all -> Pod/prod/payments-api direction=ingress+egress selector={\"app\": \"payments-api\"} ingress_rules=0 egress_rules=0 ingress_peers=0 egress_peers=0 ingress_ports=0 egress_ports=0 source=spec.podSelector detail=types=[\"Ingress\", \"Egress\"] ingress_rules=0 egress_rules=0 ingress_peers=0 egress_peers=0 ingress_ports=0 egress_ports=0 default_deny_ingress=true default_deny_egress=true"
-      ]
+        "Pod/prod/payments-api -> NetworkPolicy/prod/deny-all (egress has no matching peers/ports in context policies=[NetworkPolicy/prod/deny-all]) source=networkpolicy.egress"
+      ],
+      "remediation": {
+        "summary": "Allow required peer and port combinations in NetworkPolicy",
+        "steps": [
+          "Identify blocked service or pod traffic paths from the evidence chain",
+          "Add explicit ingress/egress peers and required ports for expected flows",
+          "Re-test connectivity after applying policy updates"
+        ],
+        "commands": [
+          "kubectl get networkpolicy -A",
+          "kubectl describe networkpolicy <policy> -n <namespace>"
+        ]
+      }
     }
   ],
   "dependency_traces": [
     {
       "chain": [
         "Pod/prod/payments-api",
-        "Secret/prod/db-password",
-        "Secret missing (source: pod.dependencies)"
+        "NetworkPolicy/prod/deny-all",
+        "NetworkPolicy denies traffic (source: networkpolicy.egress) (egress has no matching peers/ports in context policies=[NetworkPolicy/prod/deny-all])"
+      ],
+      "confidence": 0.9
+    }
+  ],
+  "blast_radius": [
+    {
+      "broken_resource": "NetworkPolicy/prod/deny-all",
+      "rank": 1,
+      "impact_score": 14.700001,
+      "confidence": 0.98,
+      "impacted_pods": [
+        "Pod/prod/payments-api"
+      ],
+      "impacted_services": [],
+      "impacted_deployments": [
+        "Deployment/prod/payments-api"
+      ],
+      "impacted_ingresses": []
+    },
+    {
+      "broken_resource": "Pod/prod/payments-api",
+      "rank": 2,
+      "impact_score": 11.76,
+      "confidence": 0.98,
+      "impacted_pods": [],
+      "impacted_services": [],
+      "impacted_deployments": [
+        "Deployment/prod/payments-api"
+      ],
+      "impacted_ingresses": []
+    },
+    {
+      "broken_resource": "Service/prod/payments",
+      "rank": 3,
+      "impact_score": 6.2999997,
+      "confidence": 0.9,
+      "impacted_pods": [],
+      "impacted_services": [],
+      "impacted_deployments": [],
+      "impacted_ingresses": [
+        "Ingress/prod/payments-ingress"
       ]
+    },
+    {
+      "broken_resource": "Secret/db-password",
+      "rank": 4,
+      "impact_score": 2.94,
+      "confidence": 0.98,
+      "impacted_pods": [],
+      "impacted_services": [],
+      "impacted_deployments": [],
+      "impacted_ingresses": []
     }
   ]
 }

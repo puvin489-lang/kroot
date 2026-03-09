@@ -23,5 +23,6 @@ pub fn base_pod() -> PodState {
         container_states: vec![],
         dependencies: vec![],
         persistent_volume_claims: vec![],
+        ports: vec![],
     }
 }

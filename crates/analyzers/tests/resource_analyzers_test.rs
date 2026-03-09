@@ -103,6 +103,7 @@ fn detects_service_selector_mismatch() {
         namespace: "prod".to_string(),
         selector,
         matched_pods: vec![],
+        ports: vec![],
     };
     let analyzer = ServiceSelectorMismatchAnalyzer;
     let ctx = AnalysisContextBuilder::new()
@@ -122,6 +123,7 @@ fn does_not_flag_service_with_matching_pods() {
         namespace: "prod".to_string(),
         selector,
         matched_pods: vec!["payments-api".to_string()],
+        ports: vec![],
     };
     let analyzer = ServiceSelectorMismatchAnalyzer;
     let ctx = AnalysisContextBuilder::new()

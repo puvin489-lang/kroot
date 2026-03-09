@@ -2,6 +2,7 @@ mod collector;
 mod context_loader;
 mod events;
 mod ingresses;
+mod namespaces;
 mod network_policies;
 mod nodes;
 mod pods;
@@ -134,6 +135,7 @@ pub async fn fetch_pod_state(name: &str) -> Result<PodState, Box<dyn std::error:
 fn merge_contexts(contexts: Vec<AnalysisContext>) -> AnalysisContext {
     let mut pods = std::collections::BTreeMap::new();
     let mut services = std::collections::BTreeMap::new();
+    let mut namespaces = std::collections::BTreeMap::new();
     let mut nodes = std::collections::BTreeMap::new();
     let mut events = std::collections::BTreeMap::new();
     let mut deployments = std::collections::BTreeMap::new();
@@ -142,6 +144,7 @@ fn merge_contexts(contexts: Vec<AnalysisContext>) -> AnalysisContext {
     let mut network_policies = std::collections::BTreeMap::new();
     let mut persistent_volume_claims = std::collections::BTreeMap::new();
     let mut persistent_volumes = std::collections::BTreeMap::new();
+    let mut storage_classes = std::collections::BTreeMap::new();
 
     for mut ctx in contexts {
         for pod in ctx.pods.drain(..) {
@@ -152,6 +155,11 @@ fn merge_contexts(contexts: Vec<AnalysisContext>) -> AnalysisContext {
             services
                 .entry((service.namespace.clone(), service.name.clone()))
                 .or_insert(service);
+        }
+        for namespace in ctx.namespaces.drain(..) {
+            namespaces
+                .entry(namespace.name.clone())
+                .or_insert(namespace);
         }
         for node in ctx.nodes.drain(..) {
             nodes.entry(node.name.clone()).or_insert(node);
@@ -196,10 +204,16 @@ fn merge_contexts(contexts: Vec<AnalysisContext>) -> AnalysisContext {
         for pv in ctx.persistent_volumes.drain(..) {
             persistent_volumes.entry(pv.name.clone()).or_insert(pv);
         }
+        for storage_class in ctx.storage_classes.drain(..) {
+            storage_classes
+                .entry(storage_class.name.clone())
+                .or_insert(storage_class);
+        }
     }
 
     AnalysisContext {
         pods: pods.into_values().collect(),
+        namespaces: namespaces.into_values().collect(),
         services: services.into_values().collect(),
         nodes: nodes.into_values().collect(),
         events: events.into_values().collect(),
@@ -209,5 +223,6 @@ fn merge_contexts(contexts: Vec<AnalysisContext>) -> AnalysisContext {
         network_policies: network_policies.into_values().collect(),
         persistent_volume_claims: persistent_volume_claims.into_values().collect(),
         persistent_volumes: persistent_volumes.into_values().collect(),
+        storage_classes: storage_classes.into_values().collect(),
     }
 }

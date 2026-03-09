@@ -1,10 +1,12 @@
 use crate::{
-    AnalysisContext, DeploymentState, EventState, IngressState, NetworkPolicyState, NodeState,
-    PersistentVolumeClaimState, PersistentVolumeState, PodState, ReplicaSetState, ServiceState,
+    AnalysisContext, DeploymentState, EventState, IngressState, NamespaceState, NetworkPolicyState,
+    NodeState, PersistentVolumeClaimState, PersistentVolumeState, PodState, ReplicaSetState,
+    ServiceState, StorageClassState,
 };
 
 pub struct AnalysisContextBuilder {
     pods: Vec<PodState>,
+    namespaces: Vec<NamespaceState>,
     services: Vec<ServiceState>,
     nodes: Vec<NodeState>,
     events: Vec<EventState>,
@@ -14,12 +16,14 @@ pub struct AnalysisContextBuilder {
     network_policies: Vec<NetworkPolicyState>,
     persistent_volume_claims: Vec<PersistentVolumeClaimState>,
     persistent_volumes: Vec<PersistentVolumeState>,
+    storage_classes: Vec<StorageClassState>,
 }
 
 impl AnalysisContextBuilder {
     pub fn new() -> Self {
         Self {
             pods: Vec::new(),
+            namespaces: Vec::new(),
             services: Vec::new(),
             nodes: Vec::new(),
             events: Vec::new(),
@@ -29,11 +33,17 @@ impl AnalysisContextBuilder {
             network_policies: Vec::new(),
             persistent_volume_claims: Vec::new(),
             persistent_volumes: Vec::new(),
+            storage_classes: Vec::new(),
         }
     }
 
     pub fn with_pods(mut self, pods: Vec<PodState>) -> Self {
         self.pods = pods;
+        self
+    }
+
+    pub fn with_namespaces(mut self, namespaces: Vec<NamespaceState>) -> Self {
+        self.namespaces = namespaces;
         self
     }
 
@@ -88,9 +98,15 @@ impl AnalysisContextBuilder {
         self
     }
 
+    pub fn with_storage_classes(mut self, storage_classes: Vec<StorageClassState>) -> Self {
+        self.storage_classes = storage_classes;
+        self
+    }
+
     pub fn build(self) -> AnalysisContext {
         AnalysisContext {
             pods: self.pods,
+            namespaces: self.namespaces,
             services: self.services,
             nodes: self.nodes,
             events: self.events,
@@ -100,6 +116,7 @@ impl AnalysisContextBuilder {
             network_policies: self.network_policies,
             persistent_volume_claims: self.persistent_volume_claims,
             persistent_volumes: self.persistent_volumes,
+            storage_classes: self.storage_classes,
         }
     }
 }
@@ -115,7 +132,7 @@ mod tests {
     use super::AnalysisContextBuilder;
     use crate::{
         ContainerLifecycleState, ContainerState, PersistentVolumeClaimState, PersistentVolumeState,
-        PodSchedulingState, PodState, ServiceState,
+        PodSchedulingState, PodState, ServiceState, StorageClassState,
     };
     use std::collections::BTreeMap;
 
@@ -144,6 +161,7 @@ mod tests {
             }],
             dependencies: vec![],
             persistent_volume_claims: vec![],
+            ports: vec![],
         }
     }
 
@@ -152,6 +170,7 @@ mod tests {
         let ctx = AnalysisContextBuilder::new().build();
         assert!(ctx.pods.is_empty());
         assert!(ctx.services.is_empty());
+        assert!(ctx.namespaces.is_empty());
         assert!(ctx.nodes.is_empty());
         assert!(ctx.events.is_empty());
         assert!(ctx.deployments.is_empty());
@@ -160,6 +179,7 @@ mod tests {
         assert!(ctx.network_policies.is_empty());
         assert!(ctx.persistent_volume_claims.is_empty());
         assert!(ctx.persistent_volumes.is_empty());
+        assert!(ctx.storage_classes.is_empty());
     }
 
     #[test]
@@ -177,6 +197,7 @@ mod tests {
             namespace: "default".to_string(),
             selector: BTreeMap::new(),
             matched_pods: vec![],
+            ports: vec![],
         }];
         let pvcs = vec![PersistentVolumeClaimState {
             name: "data".to_string(),
@@ -184,21 +205,28 @@ mod tests {
             exists: true,
             phase: "Bound".to_string(),
             volume_name: Some("pv-data".to_string()),
+            storage_class_name: Some("gp3".to_string()),
         }];
         let pvs = vec![PersistentVolumeState {
             name: "pv-data".to_string(),
             exists: true,
             phase: "Bound".to_string(),
         }];
+        let storage_classes = vec![StorageClassState {
+            name: "gp3".to_string(),
+            exists: true,
+        }];
         let ctx = AnalysisContextBuilder::new()
             .with_pods(pods)
             .with_services(services)
             .with_persistent_volume_claims(pvcs)
             .with_persistent_volumes(pvs)
+            .with_storage_classes(storage_classes)
             .build();
         assert_eq!(ctx.pods.len(), 1);
         assert_eq!(ctx.services.len(), 1);
         assert_eq!(ctx.persistent_volume_claims.len(), 1);
         assert_eq!(ctx.persistent_volumes.len(), 1);
+        assert_eq!(ctx.storage_classes.len(), 1);
     }
 }

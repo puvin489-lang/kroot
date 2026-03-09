@@ -71,8 +71,15 @@ Example chain:
 
 - Graph-first diagnosis pipeline using `petgraph`
 - 12 built-in analyzers for common production failure patterns
+- Upstream root-cause traversal to first broken dependency
+- Directional NetworkPolicy reachability RCA with peer + port simulation
+  (namespace/pod selectors, named ports/ranges, and ipBlock-aware reasoning)
+- Blast-radius analysis with ranked impact scoring for pods/services/deployments/ingresses
+- Confidence scoring for diagnoses and dependency traces
+- Suggested remediation output (summary + steps, optional command snippets)
 - Text report output for humans
 - JSON output for automation and CI systems
+- SARIF output for CI and security/dev tooling pipelines
 - Online mode (live cluster via `kube-rs`)
 - Offline mode (`--context-file`) for deterministic debugging and tests
 - Modular crate layout for collectors, graph, engine, and analyzers
@@ -124,6 +131,12 @@ Diagnose a specific pod:
 cargo run -p kroot -- diagnose pod payments-api -n prod
 ```
 
+Diagnose all namespaces with fix guidance and command snippets:
+
+```bash
+cargo run -p kroot -- diagnose cluster -A --show-commands
+```
+
 ## When to Use kroot
 
 `kroot` is useful when:
@@ -149,18 +162,27 @@ Diagnosis Report
 
 3 issues detected
 
-CRITICAL Pod/prod/payments-api -> CrashLoopBackOff detected
-  Root cause: Container repeatedly exits and Kubernetes is backing off restarts
-
-CRITICAL Pod/prod/redis -> OOMKilled detected
-  Root cause: Container exceeded memory limit and was killed
-
+CRITICAL Pod/prod/payments-api -> Missing Secret dependency detected
+  Root cause: Pod failing because secret db-password does not exist
 WARNING Service/prod/payments -> Service selector mismatch detected
   Root cause: Service selector does not match any pod labels
+WARNING Pod/prod/payments-api -> Network reachability blocked by NetworkPolicy
+  Root cause: Ingress/egress rules do not permit required peer and port communication
 
 Dependency Traces:
-  Pod/prod/payments-api -> Secret/prod/db-password -> Secret missing
-  Service/prod/payments -> Pod/prod/payments-api -> CrashLoopBackOff
+  [0.90] Pod/prod/payments-api -> NetworkPolicy/prod/deny-all -> NetworkPolicy denies traffic (source: networkpolicy.egress) (egress has no matching peers/ports in context policies=[NetworkPolicy/prod/deny-all])
+
+Blast Radius:
+  [#1 score=14.70 conf=0.98] NetworkPolicy/prod/deny-all
+    pods=1 services=0 deployments=1 ingresses=0
+    impacted pods: Pod/prod/payments-api
+    impacted deployments: Deployment/prod/payments-api
+
+Suggested Fixes:
+  Missing Secret dependency detected (Pod/prod/payments-api)
+    Summary: Create the missing Secret or update pod references
+  Network reachability blocked by NetworkPolicy (Pod/prod/payments-api)
+    Summary: Allow required peer and port combinations in NetworkPolicy
 ```
 
 ## Command Reference
@@ -168,13 +190,13 @@ Dependency Traces:
 ### Diagnose cluster
 
 ```bash
-kroot diagnose cluster [-n <namespace> | -A] [--output text|json|sarif] [--context-file <path>]
+kroot diagnose cluster [-n <namespace> | -A] [--output text|json|sarif] [--context-file <path>] [--show-fixes <bool>] [--show-commands <bool>]
 ```
 
 ### Diagnose pod
 
 ```bash
-kroot diagnose pod <name> [-n <namespace>] [--output text|json|sarif] [--context-file <path>]
+kroot diagnose pod <name> [-n <namespace>] [--output text|json|sarif] [--context-file <path>] [--show-fixes <bool>] [--show-commands <bool>]
 ```
 
 ### Notes
@@ -182,6 +204,8 @@ kroot diagnose pod <name> [-n <namespace>] [--output text|json|sarif] [--context
 - `cluster` scope defaults to your current namespace (or `-n` if provided).
 - use `-A`/`--all-namespaces` for a cross-namespace cluster scan.
 - `--context-file` bypasses cluster calls and runs analyzers against JSON context input.
+- `--show-fixes` controls suggested remediation sections in text output (default: `true`).
+- `--show-commands` includes remediation command snippets in text output (default: `false`).
 
 ## Output Formats
 
@@ -193,6 +217,8 @@ Human-readable diagnosis report with:
 - root cause statements
 - evidence lines
 - dependency traces
+- blast-radius impact sections
+- suggested remediation guidance
 
 ### JSON
 
@@ -206,7 +232,9 @@ High-level JSON shape:
 
 - `issue_count`
 - `diagnoses[]`
+- `diagnoses[].remediation`
 - `dependency_traces[]`
+- `blast_radius[]`
 
 ### SARIF
 
@@ -215,6 +243,9 @@ SARIF output is useful for CI systems and security/dev tooling pipelines:
 ```bash
 kroot diagnose cluster --output sarif -A > kroot.sarif.json
 ```
+
+SARIF properties include confidence, evidence, and remediation metadata when available.
+When blast-radius data is present, SARIF results also include `impact_score` and `impact_rank`.
 
 ## Release Binaries and Package Managers
 
@@ -265,7 +296,7 @@ Current built-in analyzers:
 9. `Service Selector Mismatch`
 10. `PersistentVolume Mount Failure`
 11. `Node NotReady`
-12. `NetworkPolicy Blocking`
+12. `Network Reachability (NetworkPolicy peer + port simulation)`
 
 Analyzer registry:
 
@@ -299,8 +330,12 @@ Current capabilities:
 
 - cluster and pod diagnosis
 - 12 built-in analyzers
-- dependency-graph-backed correlation
+- network reachability RCA for policy-blocked ingress/service/pod traffic paths
+- dependency-graph-backed root-cause traversal
+- blast-radius impact analysis
+- remediation guidance with optional command suggestions
 - JSON output for automation
+- SARIF output for CI and tooling integrations
 - offline context analysis via `--context-file`
 
 Expect active iteration as graph coverage and reasoning depth expand.
@@ -371,8 +406,12 @@ Workspace crates:
 
 ## Known Limitations
 
-- NetworkPolicy analysis currently focuses on deny-style policy structure and pod selection; it is not a full traffic simulator.
-- Dependency graph coverage is intentionally focused on high-value relations (`Deployment -> ReplicaSet -> Pod`, `Ingress -> Service`, `Service -> Pod`, `Pod -> Secret/ConfigMap/PVC/Node/PVC -> PV`, `NetworkPolicy -> Pod`).
+- NetworkPolicy reachability uses selector/peer/port simulation, but it is still context-bounded
+  (no packet-level runtime capture and no CNI-specific enforcement introspection).
+- Dependency graph coverage is intentionally focused on high-value relations (`Deployment -> ReplicaSet -> Pod`, `Ingress -> Service`, `Service -> Pod`, `Pod -> Secret/ConfigMap/PVC/Node`, `PVC -> PV`, `NetworkPolicy -> Pod`, `Service/Pod -> NetworkPolicy` blocked-path edges).
+- Storage coverage includes `PVC -> StorageClass` and `PVC -> PV` relation analysis, but deeper storage topology reasoning is still limited.
+- Blast-radius output currently tracks impacted `Pod`, `Service`, `Deployment`, and `Ingress` resources.
+- Blast-radius for non-dependency diagnoses relies on diagnosis resource/evidence anchoring; impact quality depends on evidence richness.
 - Kubernetes API permission gaps can reduce diagnosis quality (some dependencies may become unknown).
 - Output schema is currently stable for this repo, but not yet versioned as a public API contract.
 
@@ -381,8 +420,8 @@ Workspace crates:
 Next milestones:
 
 - Expand relation coverage (`StatefulSet/DaemonSet/Job -> Pod`, `IngressClass`, service-to-endpoint slice details).
-- Add impact/blast-radius analysis (failed node/resource -> affected pods/services/workloads).
-- Deepen NetworkPolicy reasoning toward directional allow/deny simulation.
+- Expand blast-radius rollups (`StatefulSet`, `DaemonSet`, `Job`, and `Node` impact views).
+- Extend reachability simulation with EndpointSlice-aware destination modeling and richer multi-rule policy conflict explanation.
 - Version and document structured output schemas (JSON/SARIF) for external integrations.
 - Add package-manager distribution (`homebrew`, `scoop`, `apt`/`rpm`).
 

@@ -1,6 +1,7 @@
 use crate::collector::Collector;
 use crate::events::EventCollector;
 use crate::ingresses::IngressCollector;
+use crate::namespaces::NamespaceCollector;
 use crate::network_policies::NetworkPolicyCollector;
 use crate::nodes::NodeCollector;
 use crate::pods::PodCollector;
@@ -10,6 +11,7 @@ use crate::workloads::WorkloadCollector;
 
 pub fn default_collectors() -> Vec<Box<dyn Collector>> {
     vec![
+        Box::new(NamespaceCollector),
         Box::new(PodCollector),
         Box::new(ServiceCollector),
         Box::new(WorkloadCollector),

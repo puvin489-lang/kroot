@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Severity};
+use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Remediation, Severity};
 
 pub struct CrashLoopBackOffAnalyzer;
 
@@ -58,6 +58,20 @@ impl Analyzer for CrashLoopBackOffAnalyzer {
             root_cause: "Container repeatedly exits and Kubernetes is backing off restarts"
                 .to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Inspect crash logs and fix startup/runtime dependencies".to_string(),
+                steps: vec![
+                    "Inspect previous container logs to identify the first crash reason"
+                        .to_string(),
+                    "Validate required environment variables, secrets, and configmaps".to_string(),
+                    "Verify dependent services/datastores are reachable and healthy".to_string(),
+                    "Adjust memory/cpu requests and limits if resources are too low".to_string(),
+                ],
+                commands: vec![
+                    "kubectl logs <pod> -n <namespace> --previous".to_string(),
+                    "kubectl describe pod <pod> -n <namespace>".to_string(),
+                ],
+            }),
         })
     }
 }

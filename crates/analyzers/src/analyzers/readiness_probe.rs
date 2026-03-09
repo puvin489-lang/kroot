@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, Diagnosis, Severity};
+use types::{AnalysisContext, Diagnosis, Remediation, Severity};
 
 pub struct FailedReadinessProbeAnalyzer;
 
@@ -43,6 +43,16 @@ impl Analyzer for FailedReadinessProbeAnalyzer {
             message: "Readiness probe failures detected".to_string(),
             root_cause: "Pod is running but failing readiness checks".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Fix readiness endpoint behavior and dependent startup conditions"
+                    .to_string(),
+                steps: vec![
+                    "Validate readiness probe path/port/command and timeout thresholds".to_string(),
+                    "Ensure app dependencies are available before reporting ready".to_string(),
+                    "Increase initial delay if startup is consistently slow".to_string(),
+                ],
+                commands: vec!["kubectl describe pod <pod> -n <namespace>".to_string()],
+            }),
         })
     }
 }

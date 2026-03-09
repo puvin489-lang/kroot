@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Severity};
+use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Remediation, Severity};
 
 pub struct ImagePullBackOffAnalyzer;
 
@@ -60,6 +60,18 @@ impl Analyzer for ImagePullBackOffAnalyzer {
             message: "Image pull failure detected".to_string(),
             root_cause: "Container image could not be pulled from registry".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Fix image reference and registry authentication".to_string(),
+                steps: vec![
+                    "Confirm the image name and tag exist in the target registry".to_string(),
+                    "If registry is private, configure imagePullSecrets on the service account or pod".to_string(),
+                    "Validate cluster/node network connectivity to the container registry".to_string(),
+                ],
+                commands: vec![
+                    "kubectl describe pod <pod> -n <namespace>".to_string(),
+                    "kubectl get secret -n <namespace>".to_string(),
+                ],
+            }),
         })
     }
 }

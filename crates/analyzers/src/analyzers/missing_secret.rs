@@ -1,7 +1,7 @@
 use crate::{AnalysisInput, GraphAnalyzer};
 use graph::{Relation, ResourceKind};
 use std::collections::BTreeSet;
-use types::{DependencyStatus, Diagnosis, Severity};
+use types::{DependencyStatus, Diagnosis, Remediation, Severity};
 
 pub struct MissingSecretAnalyzer;
 
@@ -73,6 +73,18 @@ impl GraphAnalyzer for MissingSecretAnalyzer {
             message: "Missing Secret dependency detected".to_string(),
             root_cause,
             evidence,
+            remediation: Some(Remediation {
+                summary: "Create the missing Secret or update pod references".to_string(),
+                steps: vec![
+                    "Create the referenced secret in the same namespace as the failing pod".to_string(),
+                    "Ensure expected key names match the pod env/volume references".to_string(),
+                    "Restart workload rollout after the secret is created or corrected".to_string(),
+                ],
+                commands: vec![
+                    "kubectl create secret generic <secret-name> -n <namespace> --from-literal=<key>=<value>".to_string(),
+                    "kubectl rollout restart deployment/<deployment> -n <namespace>".to_string(),
+                ],
+            }),
         })
     }
 }

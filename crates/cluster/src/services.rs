@@ -3,8 +3,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use k8s_openapi::api::core::v1::{Pod, Service};
+use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::{Api, Client, api::ListParams};
-use types::{AnalysisContextBuilder, ServiceState};
+use types::{AnalysisContextBuilder, ServicePortState, ServiceState};
 
 use crate::collector::{ClusterResult, CollectInput, Collector};
 
@@ -61,6 +62,22 @@ async fn collect_service_states(
                 .as_ref()
                 .and_then(|spec| spec.selector.clone())
                 .unwrap_or_default();
+            let ports = service
+                .spec
+                .as_ref()
+                .and_then(|spec| spec.ports.as_ref())
+                .map(|ports| {
+                    ports
+                        .iter()
+                        .map(|port| ServicePortState {
+                            name: port.name.clone(),
+                            protocol: port.protocol.clone().unwrap_or_else(|| "TCP".to_string()),
+                            port: port.port,
+                            target_port: port.target_port.as_ref().map(int_or_string_to_string),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             let matched_pods = if selector.is_empty() {
                 Vec::new()
             } else {
@@ -76,6 +93,7 @@ async fn collect_service_states(
                 namespace: namespace.to_string(),
                 selector,
                 matched_pods,
+                ports,
             })
         })
         .collect::<Vec<_>>();
@@ -89,6 +107,13 @@ fn pod_matches_selector(
     selector
         .iter()
         .all(|(key, value)| labels.get(key) == Some(value))
+}
+
+fn int_or_string_to_string(value: &IntOrString) -> String {
+    match value {
+        IntOrString::Int(port) => port.to_string(),
+        IntOrString::String(name) => name.clone(),
+    }
 }
 
 #[cfg(test)]

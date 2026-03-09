@@ -7,6 +7,8 @@ pub struct ServiceState {
     pub namespace: String,
     pub selector: BTreeMap<String, String>,
     pub matched_pods: Vec<String>,
+    #[serde(default)]
+    pub ports: Vec<ServicePortState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,4 +17,12 @@ pub struct ServiceSelectorState {
     pub selector: BTreeMap<String, String>,
     pub key_overlap_with_pod: bool,
     pub matches_pod: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServicePortState {
+    pub name: Option<String>,
+    pub protocol: String,
+    pub port: i32,
+    pub target_port: Option<String>,
 }

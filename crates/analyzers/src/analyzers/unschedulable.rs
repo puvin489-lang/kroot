@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, Diagnosis, Severity};
+use types::{AnalysisContext, Diagnosis, Remediation, Severity};
 
 pub struct UnschedulableAnalyzer;
 
@@ -42,6 +42,22 @@ impl Analyzer for UnschedulableAnalyzer {
             message: "Pod is unschedulable".to_string(),
             root_cause: "Scheduler could not place pod on any node".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Align pod scheduling constraints with available node capacity"
+                    .to_string(),
+                steps: vec![
+                    "Check scheduling message for insufficient CPU/memory or taint mismatch"
+                        .to_string(),
+                    "Adjust requests/limits, node selectors, affinities, or tolerations"
+                        .to_string(),
+                    "Scale node pool capacity if constraints are valid but cluster is full"
+                        .to_string(),
+                ],
+                commands: vec![
+                    "kubectl describe pod <pod> -n <namespace>".to_string(),
+                    "kubectl get nodes".to_string(),
+                ],
+            }),
         })
     }
 }

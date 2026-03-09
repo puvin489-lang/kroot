@@ -16,6 +16,7 @@ pub enum ResourceKind {
     ConfigMap,
     PersistentVolumeClaim,
     PersistentVolume,
+    StorageClass,
     NetworkPolicy,
 }
 
@@ -114,6 +115,14 @@ impl ResourceId {
             name: name.to_string(),
         }
     }
+
+    pub fn storage_class(name: &str) -> Self {
+        Self {
+            kind: ResourceKind::StorageClass,
+            namespace: None,
+            name: name.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -126,8 +135,10 @@ pub enum Relation {
     UsesConfigMap,
     MountsPersistentVolumeClaim,
     BindsPersistentVolume,
+    UsesStorageClass,
     ScheduledOnNode,
     AppliesToPod,
+    BlockedByNetworkPolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -264,6 +275,26 @@ impl DependencyGraph {
                     edge.weight().clone(),
                 )
             })
+            .collect()
+    }
+
+    pub fn outgoing_relations(&self, from: &ResourceId) -> Vec<(ResourceId, EdgeMeta)> {
+        let Some(from_index) = self.node_indices.get(from).copied() else {
+            return Vec::new();
+        };
+        self.graph
+            .edges(from_index)
+            .map(|edge| (self.graph[edge.target()].clone(), edge.weight().clone()))
+            .collect()
+    }
+
+    pub fn incoming_relations(&self, to: &ResourceId) -> Vec<(ResourceId, EdgeMeta)> {
+        let Some(to_index) = self.node_indices.get(to).copied() else {
+            return Vec::new();
+        };
+        self.graph
+            .edges_directed(to_index, petgraph::Direction::Incoming)
+            .map(|edge| (self.graph[edge.source()].clone(), edge.weight().clone()))
             .collect()
     }
 }

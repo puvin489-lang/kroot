@@ -7,4 +7,5 @@ pub struct PersistentVolumeClaimState {
     pub exists: bool,
     pub phase: String,
     pub volume_name: Option<String>,
+    pub storage_class_name: Option<String>,
 }

@@ -1,6 +1,6 @@
 mod report;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -33,6 +33,10 @@ struct DiagnoseArgs {
     context_file: Option<PathBuf>,
     #[arg(short = 'A', long = "all-namespaces", global = true)]
     all_namespaces: bool,
+    #[arg(long = "show-fixes", default_value_t = true, action = ArgAction::Set, global = true)]
+    show_fixes: bool,
+    #[arg(long = "show-commands", default_value_t = false, action = ArgAction::Set, global = true)]
+    show_commands: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -54,6 +58,7 @@ struct PodDiagnosisOutput {
     namespace: String,
     diagnoses: Vec<types::Diagnosis>,
     dependency_traces: Vec<engine::DependencyTrace>,
+    blast_radius: Vec<engine::BlastRadiusImpact>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +66,7 @@ struct ClusterDiagnosisOutput {
     issue_count: usize,
     diagnoses: Vec<types::Diagnosis>,
     dependency_traces: Vec<engine::DependencyTrace>,
+    blast_radius: Vec<engine::BlastRadiusImpact>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +131,16 @@ struct SarifProperties {
     confidence: f32,
     root_cause: String,
     evidence: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    impact_score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    impact_rank: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remediation_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    remediation_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    remediation_commands: Vec<String>,
 }
 
 #[tokio::main]
@@ -147,6 +163,8 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     args.output,
                     args.context_file,
                     args.all_namespaces,
+                    args.show_fixes,
+                    args.show_commands,
                 )
                 .await?
             }
@@ -156,6 +174,8 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     args.output,
                     args.context_file,
                     args.all_namespaces,
+                    args.show_fixes,
+                    args.show_commands,
                 )
                 .await?
             }
@@ -171,6 +191,8 @@ async fn diagnose_pod(
     output: OutputFormat,
     context_file: Option<PathBuf>,
     all_namespaces: bool,
+    show_fixes: bool,
+    show_commands: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if all_namespaces {
         return Err(std::io::Error::new(
@@ -206,7 +228,14 @@ async fn diagnose_pod(
     let run = engine.run_report(&ctx);
 
     match output {
-        OutputFormat::Text => report::print_pod_report(pod, run.diagnoses, run.dependency_traces),
+        OutputFormat::Text => report::print_pod_report(
+            pod,
+            run.diagnoses,
+            run.dependency_traces,
+            run.blast_radius,
+            show_fixes,
+            show_commands,
+        ),
         OutputFormat::Json => {
             let diagnoses = report::normalize_diagnoses(run.diagnoses);
             let payload = PodDiagnosisOutput {
@@ -214,6 +243,7 @@ async fn diagnose_pod(
                 namespace: pod.namespace.clone(),
                 diagnoses,
                 dependency_traces: run.dependency_traces,
+                blast_radius: run.blast_radius,
             };
             println!("{}", serde_json::to_string_pretty(&payload)?);
         }
@@ -221,7 +251,7 @@ async fn diagnose_pod(
             let diagnoses = report::normalize_diagnoses(run.diagnoses);
             println!(
                 "{}",
-                serde_json::to_string_pretty(&build_sarif_log(&diagnoses))?
+                serde_json::to_string_pretty(&build_sarif_log(&diagnoses, &run.blast_radius))?
             );
         }
     }
@@ -234,6 +264,8 @@ async fn diagnose_cluster(
     output: OutputFormat,
     context_file: Option<PathBuf>,
     all_namespaces: bool,
+    show_fixes: bool,
+    show_commands: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if all_namespaces && namespace.is_some() {
         return Err(std::io::Error::new(
@@ -262,13 +294,20 @@ async fn diagnose_cluster(
     };
 
     match output {
-        OutputFormat::Text => report::print_cluster_report(run.diagnoses, run.dependency_traces),
+        OutputFormat::Text => report::print_cluster_report(
+            run.diagnoses,
+            run.dependency_traces,
+            run.blast_radius,
+            show_fixes,
+            show_commands,
+        ),
         OutputFormat::Json => {
             let diagnoses = report::normalize_diagnoses(run.diagnoses);
             let payload = ClusterDiagnosisOutput {
                 issue_count: diagnoses.len(),
                 diagnoses,
                 dependency_traces: run.dependency_traces,
+                blast_radius: run.blast_radius,
             };
             println!("{}", serde_json::to_string_pretty(&payload)?);
         }
@@ -276,7 +315,7 @@ async fn diagnose_cluster(
             let diagnoses = report::normalize_diagnoses(run.diagnoses);
             println!(
                 "{}",
-                serde_json::to_string_pretty(&build_sarif_log(&diagnoses))?
+                serde_json::to_string_pretty(&build_sarif_log(&diagnoses, &run.blast_radius))?
             );
         }
     }
@@ -292,9 +331,21 @@ fn load_context_from_file(
     Ok(context)
 }
 
-fn build_sarif_log(diagnoses: &[types::Diagnosis]) -> SarifLog {
+fn build_sarif_log(
+    diagnoses: &[types::Diagnosis],
+    blast_radius: &[engine::BlastRadiusImpact],
+) -> SarifLog {
     let mut rules = std::collections::BTreeMap::new();
     let mut results = Vec::new();
+    let impact_by_resource = blast_radius
+        .iter()
+        .map(|impact| {
+            (
+                impact.broken_resource.clone(),
+                (impact.impact_score, impact.rank),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
 
     for diagnosis in diagnoses {
         let rule_id = diagnosis.message.replace(' ', "_").to_lowercase();
@@ -321,6 +372,23 @@ fn build_sarif_log(diagnoses: &[types::Diagnosis]) -> SarifLog {
                 confidence: diagnosis.confidence,
                 root_cause: diagnosis.root_cause.clone(),
                 evidence: diagnosis.evidence.clone(),
+                impact_score: impact_by_resource
+                    .get(&diagnosis.resource)
+                    .map(|(score, _)| *score),
+                impact_rank: impact_by_resource
+                    .get(&diagnosis.resource)
+                    .map(|(_, rank)| *rank),
+                remediation_summary: diagnosis.remediation.as_ref().map(|r| r.summary.clone()),
+                remediation_steps: diagnosis
+                    .remediation
+                    .as_ref()
+                    .map(|r| r.steps.clone())
+                    .unwrap_or_default(),
+                remediation_commands: diagnosis
+                    .remediation
+                    .as_ref()
+                    .map(|r| r.commands.clone())
+                    .unwrap_or_default(),
             },
         });
     }

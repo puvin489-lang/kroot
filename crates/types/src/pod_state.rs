@@ -17,6 +17,8 @@ pub struct PodState {
     pub container_states: Vec<ContainerState>,
     pub dependencies: Vec<PodDependency>,
     pub persistent_volume_claims: Vec<String>,
+    #[serde(default)]
+    pub ports: Vec<PodPortState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,4 +48,11 @@ pub enum DependencyStatus {
     Present,
     Missing,
     Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PodPortState {
+    pub name: Option<String>,
+    pub protocol: String,
+    pub container_port: i32,
 }

@@ -1,6 +1,6 @@
 use crate::{AnalysisInput, Analyzer, GraphAnalyzer};
 use std::collections::BTreeSet;
-use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Severity};
+use types::{AnalysisContext, ContainerLifecycleState, Diagnosis, Remediation, Severity};
 
 pub struct OOMKilledAnalyzer;
 
@@ -56,6 +56,18 @@ impl Analyzer for OOMKilledAnalyzer {
             message: "OOMKilled detected".to_string(),
             root_cause: "Container exceeded memory limit and was killed".to_string(),
             evidence,
+            remediation: Some(Remediation {
+                summary: "Increase memory headroom or reduce container memory usage".to_string(),
+                steps: vec![
+                    "Inspect memory usage profile and spikes for the container".to_string(),
+                    "Increase pod memory limits/requests based on observed peak usage".to_string(),
+                    "Tune application memory behavior or enable caching limits".to_string(),
+                ],
+                commands: vec![
+                    "kubectl top pod <pod> -n <namespace>".to_string(),
+                    "kubectl describe pod <pod> -n <namespace>".to_string(),
+                ],
+            }),
         })
     }
 }

